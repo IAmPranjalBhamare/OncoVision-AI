@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OncoVision AI | CAD Diagnostic Analysis Dashboard</title>
+    <meta name="description" content="Advanced Computer-Aided Diagnosis portal for breast cancer detection using AI segmentation, Grad-CAM, and clinical image analysis tools.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- SVG Filter Defs (Sharpen, Edge-Enhance) -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;">
+      <defs>
+        <filter id="cad-sharpen" x="0" y="0" width="100%" height="100%" color-interpolation-filters="linearRGB">
+          <feConvolveMatrix order="3" preserveAlpha="true"
+            kernelMatrix="0 -0.5 0  -0.5 3 -0.5  0 -0.5 0"/>
+        </filter>
+        <filter id="cad-edge" x="0" y="0" width="100%" height="100%" color-interpolation-filters="linearRGB">
+          <feConvolveMatrix order="3" preserveAlpha="true"
+            kernelMatrix="-1 -1 -1  -1 9 -1  -1 -1 -1"/>
+        </filter>
+      </defs>
+    </svg>
+    <!-- Top Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <i class="fa-solid fa-microscope" style="color: #0984e3;"></i>
+            <span>OncoVision <span class="highlight">AI</span></span>
+        </div>
+        <div class="nav-actions">
+            <span class="status-indicator"><div class="dot green"></div>Secure Session</span>
+            <button class="btn btn-outline-danger" onclick="logoutSession()">
+                <i class="fa-solid fa-lock"></i> End Session
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Workspace -->
+    <main class="workspace container">
+        
+        <!-- Upload State -->
+        <div id="uploadView" class="view-panel active">
+            <div class="upload-zone" id="dropZone">
+                <i class="fa-solid fa-cloud-arrow-up icon-large"></i>
+                <h2>Upload Patient Scan</h2>
+                <p>Drag and drop a mammography or ultrasound image here<br>or click to browse local files.</p>
+                
+                <div class="patient-info-capture mt-4">
+                    <input type="text" id="patientIdInput" class="form-control" placeholder="Enter Patient ID / Case Number">
+                </div>
+
+                <div class="privacy-note mt-3">
+                    <i class="fa-solid fa-shield-halved"></i> Data is processed purely in RAM and immediately erased. No persistent storage.
+                </div>
+                <input type="file" id="fileInput" accept="image/png, image/jpeg" style="display: none;">
+                <button class="btn btn-primary mt-4" onclick="document.getElementById('fileInput').click()">
+                    Analyze New Scan
+                </button>
+            </div>
+            
+            <div id="loadingState" class="loading-state hidden">
+                <div class="spinner"></div>
+                <h3 class="mt-4">AI Analyzing Image...</h3>
+                <p>Generating Segmentation and Explainability Maps</p>
+            </div>
+        </div>
+
+        <!-- Results State -->
+        <div id="resultsView" class="view-panel hidden">
+            
+            <div class="dashboard-header">
+                <div>
+                    <h2>Diagnostic Results</h2>
+                    <p class="text-muted">Processed securely in real-time</p>
+                </div>
+                <div class="action-bar">
+                    <button class="btn btn-outline-primary" id="btnToggleTriple" onclick="toggleTripleView()">
+                        <i class="fa-solid fa-table-cells-large"></i> Triple Diagnostic
+                    </button>
+                    <button class="btn btn-outline-primary" id="btnToggleCompare" onclick="toggleCompareMode()">
+                        <i class="fa-solid fa-columns"></i> Comparison Mode
+                    </button>
+                    <button class="btn btn-outline-success" onclick="downloadReport()">
+                        <i class="fa-solid fa-file-pdf"></i> Download Report
+                    </button>
+                    <button class="btn btn-primary" onclick="clearData()">
+                        <i class="fa-solid fa-check"></i> Done & Clear
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid layout-grid">
+                
+                <!-- Left Column: Patient/Classification Data -->
+                <div class="col data-panel">
+                    <div class="card result-card mb-4" id="predictionCard">
+                        <h3>Prediction</h3>
+                        <div class="prediction-large" id="primaryPrediction">BENIGN</div>
+                        <div class="confidence-bar-container mt-2">
+                            <div class="confidence-bar" id="confidenceFill" style="width: 85%;"></div>
+                        </div>
+                        <div class="confidence-text" id="confidenceText">Confidence: 85.0%</div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Class Probabilities</h3>
+                        <div class="probability-list" id="probList">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                    
+                    <div class="card mt-4 xai-card" style="border-color: rgba(9, 132, 227, 0.4);">
+                        <h3>XAI Analytics</h3>
+                        
+                        <div class="metric-row" title="Percentage of total breast tissue classified as tumor.">
+                            <span><i class="fa-solid fa-expand" style="width:20px; color:#a4b0be"></i> Tissue Coverage <i class="fa-solid fa-circle-info text-xs" style="color:#666"></i></span>
+                            <strong id="metricCoverage">--%</strong>
+                        </div>
+                        <div class="metric-row" title="Percentage of the model's top attention that falls strictly inside the tumor mask.">
+                            <span><i class="fa-solid fa-crosshairs" style="width:20px; color:#a4b0be"></i> Target Alignment <i class="fa-solid fa-circle-info text-xs" style="color:#666"></i></span>
+                            <strong id="metricAlignment">--%</strong>
+                        </div>
+                        <div class="metric-row" title="Measures how cleanly focused the attention signal is across the image (vs scattered noise).">
+                            <span><i class="fa-solid fa-bullseye" style="width:20px; color:#a4b0be"></i> Signal Focus <i class="fa-solid fa-circle-info text-xs" style="color:#666"></i></span>
+                            <strong id="metricConcentration">--%</strong>
+                        </div>
+                    </div>
+
+                    <!-- CAD Image Toolkit -->
+                    <div class="card mt-4 cad-card">
+                        <h3><i class="fa-solid fa-stethoscope" style="color:#00d26a; margin-right:0.4rem;"></i>CAD Image Toolkit</h3>
+
+                        <!-- Slider: Brightness -->
+                        <div class="cad-slider-row">
+                            <label>
+                                <span><i class="fa-solid fa-sun"></i> Brightness</span>
+                                <span id="cadBrightnessVal" class="cad-val">100%</span>
+                            </label>
+                            <input type="range" id="cadBrightness" class="cad-range" min="0" max="200" value="100">
+                        </div>
+
+                        <!-- Slider: Contrast -->
+                        <div class="cad-slider-row">
+                            <label>
+                                <span><i class="fa-solid fa-circle-half-stroke"></i> Contrast</span>
+                                <span id="cadContrastVal" class="cad-val">100%</span>
+                            </label>
+                            <input type="range" id="cadContrast" class="cad-range" min="0" max="200" value="100">
+                        </div>
+
+                        <!-- Slider: Saturation -->
+                        <div class="cad-slider-row">
+                            <label>
+                                <span><i class="fa-solid fa-palette"></i> Saturation</span>
+                                <span id="cadSaturationVal" class="cad-val">100%</span>
+                            </label>
+                            <input type="range" id="cadSaturation" class="cad-range" min="0" max="200" value="100">
+                        </div>
+
+                        <!-- Slider: Hue / False Color -->
+                        <div class="cad-slider-row">
+                            <label>
+                                <span><i class="fa-solid fa-droplet"></i> Hue / False Color</span>
+                                <span id="cadHueVal" class="cad-val">0°</span>
+                            </label>
+                            <input type="range" id="cadHue" class="cad-range" min="0" max="360" value="0">
+                        </div>
+
+                        <!-- Slider: Opacity (global) -->
+                        <div class="cad-slider-row">
+                            <label>
+                                <span><i class="fa-solid fa-eye"></i> Opacity</span>
+                                <span id="cadOpacityVal" class="cad-val">100%</span>
+                            </label>
+                            <input type="range" id="cadOpacity" class="cad-range" min="20" max="100" value="100">
+                        </div>
+
+                        <!-- Toggle Buttons Grid -->
+                        <div class="cad-toggle-grid">
+                            <button class="cad-toggle-btn" id="cadInvertBtn" onclick="toggleCadInvert()" title="Invert colors — reveals calcifications and micro-lesions">
+                                <i class="fa-solid fa-yin-yang"></i> Invert
+                            </button>
+                            <button class="cad-toggle-btn" id="cadGrayscaleBtn" onclick="toggleCadGrayscale()" title="Remove color bias for objective analysis">
+                                <i class="fa-solid fa-droplet-slash"></i> Grayscale
+                            </button>
+                            <button class="cad-toggle-btn" id="cadSharpenBtn" onclick="toggleCadSharpen()" title="Sharpen edges to improve margin visibility">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Sharpen
+                            </button>
+                            <button class="cad-toggle-btn" id="cadEdgeBtn" onclick="toggleCadEdge()" title="High-pass edge enhancement — isolates structural boundaries">
+                                <i class="fa-solid fa-border-all"></i> Edge Boost
+                            </button>
+                            <button class="cad-toggle-btn" id="cadFlipHBtn" onclick="toggleCadFlipH()" title="Mirror image horizontally">
+                                <i class="fa-solid fa-left-right"></i> Flip H
+                            </button>
+                            <button class="cad-toggle-btn" id="cadFlipVBtn" onclick="toggleCadFlipV()" title="Mirror image vertically">
+                                <i class="fa-solid fa-up-down"></i> Flip V
+                            </button>
+                            <button class="cad-toggle-btn" id="cadMeasureBtn" onclick="toggleMeasure()" title="Caliper: click and drag to measure lesion distance in pixels">
+                                <i class="fa-solid fa-ruler"></i> Caliper
+                            </button>
+                            <button class="cad-toggle-btn" onclick="clearMeasureCanvas()" title="Erase all measurements from the viewer">
+                                <i class="fa-solid fa-eraser"></i> Erase
+                            </button>
+                        </div>
+
+                        <!-- Reset All -->
+                        <button class="cad-reset-btn" onclick="resetCadFilters()">
+                            <i class="fa-solid fa-rotate-left"></i> Reset All Filters
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Column: Interactive Visualizer -->
+                <div class="col visualizer-panel" id="visualizerPanel">
+                    <div class="card p-0 visualizer-card" id="viewerContainer">
+                        <div class="visualizer-toolbar">
+                            <span class="v-label">CURRENT SCAN</span>
+                            <button class="tool-btn active" data-view="original">Original</button>
+                            <button class="tool-btn" data-view="bm3d">BM3D Filtered</button>
+                            <button class="tool-btn" data-view="segmentation">Mask Fill</button>
+                            <button class="tool-btn" data-view="contour">Boundary Contour</button>
+                            <button class="tool-btn" data-view="gradcam">XAI Heatmap</button>
+                        </div>
+                        
+                        <div class="image-container" id="container1">
+                            <img id="imgOriginal" class="viewer-img active" src="" alt="Original">
+                            <img id="imgBm3d" class="viewer-img hidden" src="" alt="BM3D Filtered">
+                            
+                            <!-- Overlays -->
+                            <div class="overlay-container hidden" id="overlaySegmentation">
+                                <img id="imgOriginalContext1" class="viewer-img bg-layer" src="">
+                                <img id="imgMask" class="viewer-img top-layer" src="">
+                                <div class="slider-control">
+                                    <label>Mask Opacity</label>
+                                    <input type="range" id="sliderMask" min="0" max="100" value="80">
+                                </div>
+                            </div>
+                            
+                            <div class="overlay-container hidden" id="overlayContour">
+                                <img id="imgOriginalContext3" class="viewer-img bg-layer" src="">
+                                <img id="imgContour" class="viewer-img top-layer" src="">
+                                <div class="slider-control">
+                                    <label>Contour Visibility</label>
+                                    <input type="range" id="sliderContour" min="0" max="100" value="100">
+                                </div>
+                            </div>
+                            
+                            <div class="overlay-container hidden" id="overlayGradcam">
+                                <img id="imgOriginalContext2" class="viewer-img bg-layer" src="">
+                                <img id="imgGradcam" class="viewer-img top-layer" src="">
+                                <div class="slider-control">
+                                    <label>Grad-CAM Opacity</label>
+                                    <input type="range" id="sliderGradcam" min="0" max="100" value="75">
+                                </div>
+                            </div>
+
+                            <!-- CAD Measurement Canvas -->
+                            <canvas id="measureCanvas"></canvas>
+                            <div class="measure-badge" id="measureBadge"></div>
+
+                            <!-- Zoom/Pan Controls -->
+                            <div class="visualizer-controls">
+                                <button onclick="zoom(0.1)" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                                <button onclick="zoom(-0.1)" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                                <button onclick="resetZoom()" title="Reset View"><i class="fa-solid fa-arrows-rotate"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Triple View Slot (Hidden by default) -->
+                    <div class="card p-0 visualizer-card hidden" id="tripleVisualizer">
+                        <div class="visualizer-toolbar">
+                            <span class="v-label">TRIPLE DIAGNOSTIC VIEW</span>
+                            <div class="text-muted" style="font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; margin-left: auto; margin-right: 1rem;">
+                                <i class="fa-solid fa-circle-info"></i> Sequential Localization Flow
+                            </div>
+                        </div>
+                        <div class="triple-grid" id="tripleGrid">
+                            <div class="triple-pane">
+                                <div class="pane-label">01 ORIGINAL SCAN</div>
+                                <div class="pane-content">
+                                    <img id="tripleImgOriginal" class="triple-img" src="">
+                                </div>
+                            </div>
+                            <div class="triple-pane">
+                                <div class="pane-label">02 SEGMENTATION MASK</div>
+                                <div class="pane-content">
+                                    <img id="tripleImgOriginal2" class="triple-img" src="">
+                                    <img id="tripleImgMask" class="triple-img triple-over" src="">
+                                </div>
+                            </div>
+                            <div class="triple-pane">
+                                <div class="pane-label">03 XAI HEATMAP FUSION</div>
+                                <div class="pane-content">
+                                    <img id="tripleImgFusion" class="triple-img" src="">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Slot (Hidden by default) -->
+                    <div class="card p-0 visualizer-card hidden" id="compareVisualizer">
+                         <div class="visualizer-toolbar">
+                            <span class="v-label">REFERENCE SCAN</span>
+                            <button class="tool-btn active" data-view="original">Original</button>
+                            <button class="tool-btn" data-view="bm3d">BM3D Filtered</button>
+                            <button class="tool-btn" data-view="segmentation">Mask Fill</button>
+                            <button class="tool-btn" data-view="contour">Boundary Contour</button>
+                            <button class="tool-btn" data-view="gradcam">XAI Heatmap</button>
+                        </div>
+                        <div class="image-container" id="container2">
+                            <div class="compare-placeholder" id="comparePlaceholder">
+                                <button class="btn btn-outline-primary" onclick="document.getElementById('compareInput').click()">
+                                    Load historical scan
+                                </button>
+                                <input type="file" id="compareInput" accept="image/png, image/jpeg" style="display: none;" onchange="handleCompareFile(this)">
+                            </div>
+                            <img id="imgOriginalCompare" class="viewer-img hidden" src="" alt="Reference">
+                            <img id="imgBm3dCompare" class="viewer-img hidden" src="" alt="BM3D Reference">
+                            
+                            <!-- Same Overlays for Comparison -->
+                            <div class="overlay-container hidden" id="overlaySegmentationCompare">
+                                <img id="imgOriginalContext1Compare" class="viewer-img bg-layer" src="">
+                                <img id="imgMaskCompare" class="viewer-img top-layer" src="">
+                            </div>
+                            <div class="overlay-container hidden" id="overlayContourCompare">
+                                <img id="imgOriginalContext3Compare" class="viewer-img bg-layer" src="">
+                                <img id="imgContourCompare" class="viewer-img top-layer" src="">
+                            </div>
+                            <div class="overlay-container hidden" id="overlayGradcamCompare">
+                                <img id="imgOriginalContext2Compare" class="viewer-img bg-layer" src="">
+                                <img id="imgGradcamCompare" class="viewer-img top-layer" src="">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ═══════════════════════════════════════════════════════════════
+             XAI CONTRIBUTION RANK SECTION (hidden until results arrive)
+             ═══════════════════════════════════════════════════════════════ -->
+        <div id="xaiRankSection" class="xai-rank-section hidden">
+            <div class="xai-rank-header">
+                <i class="fa-solid fa-layer-group" style="color:#f59e0b;"></i>
+                <h3>Contribution-Ranked XAI Maps</h3>
+                <p class="text-muted">Regions ordered by how much each area influenced the model's prediction — from critical to background.</p>
+            </div>
+
+            <!-- Tier Legend -->
+            <div class="tier-legend-strip">
+                <div class="tier-pill tier-1"><span class="dot"></span>Tier 1 · Critical &nbsp;≥90th pct</div>
+                <div class="tier-pill tier-2"><span class="dot"></span>Tier 2 · High &nbsp;70–90th pct</div>
+                <div class="tier-pill tier-3"><span class="dot"></span>Tier 3 · Moderate &nbsp;40–70th pct</div>
+                <div class="tier-pill tier-bg"><span class="dot"></span>Background &nbsp;&lt;40th pct</div>
+                <div class="tier-arrow">← Highest Contribution &nbsp;&nbsp; Lowest →</div>
+            </div>
+
+            <!-- Two rank images side by side -->
+            <div class="rank-grid">
+                <div class="rank-card">
+                    <div class="rank-card-label">
+                        <i class="fa-solid fa-brain" style="color:#dc2626;"></i>
+                        Classification Contribution Rank
+                        <span class="rank-subtag">Grad-CAM activation-ranked — shows what drove the class prediction</span>
+                    </div>
+                    <img id="imgClsRank" class="rank-img" src="" alt="Classification Contribution Rank">
+                </div>
+                <div class="rank-card">
+                    <div class="rank-card-label">
+                        <i class="fa-solid fa-draw-polygon" style="color:#0ea5e9;"></i>
+                        Segmentation Contribution Rank
+                        <span class="rank-subtag">Within-mask region importance — shows highest-signal tumor sub-regions</span>
+                    </div>
+                    <img id="imgSegRank" class="rank-img" src="" alt="Segmentation Contribution Rank">
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script src="/static/js/main.js?v=5"></script>
+</body>
+</html>

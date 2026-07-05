@@ -1,0 +1,54 @@
+# ONCOVISION AI - PROPOSED MODEL ARCHITECTURE (DRAFT)
+
+Section 4. Proposed Model Architecture
+
+In this section, we present the architecture of OncoVision AI, a high-fidelity diagnostic framework focused on the automated classification of breast cancer lesions using ultrasound imaging. The proposed methodology centers on a Dual-Backbone Feature Fusion (EDCNN) network followed by a SmoothGrad-CAM++ explainability engine.
+
+4.1. Dual-Phase Image Normalization and Preprocessing
+The framework employs a dual-phase normalization strategy to ensure both model convergence and clinical interpretability:
+* Z-Score Normalization: Applied to all model inputs to ensure zero mean and unit variance. Formula: $z = (x - \mu) / \sigma$. This stabilizes the internal gradients during backpropagation.
+* Min-Max Normalization: Utilized for BM3D denoising and XAI output to scale intensities into a [0, 1] range. Formula: $x' = (x - x_{min}) / (x_{max} - x_{min})$.
+* Adaptive Contrast Enhancement: CLAHE is applied to sharpen lesion margins while suppressing background speckle noise.
+* Geometric Data Augmentation: Stochastic transformations including rotation (6°), shearing (0.3), and zoom are applied to enhance spatial invariance.
+
+
+4.2. Dual-Backbone Hybrid Classification (EDCNN)
+The core of our diagnostic engine is the Efficient Dual-Backbone Convolutional Neural Network (EDCNN). This model is designed to harmonize the trade-off between computational efficiency and feature resolution.
+
+[FIGURE: EDCNN Dual-Backbone Architecture - Path provided separately]
+
+* MobileNetV2 Branch (Efficiency): This pathway utilizes depthwise separable convolutions to capture essential edge-based features. It provides the model with a global structural understanding of the lesion's orientation and boundary uniformity.
+* DenseNet121 Branch (Complexity): This pathway employs dense connectivity towers, where each layer transmits its feature maps to all subsequent layers. This encourages extensive feature reuse, critical for identifying micro-textures like spiculations inside the tumor.
+* Feature Fusion & Classification: Features from both backbones are combined via Global Average Pooling and then Concatenated. This final feature vector is passed through a 256-node ReLU dense layer with Batch Normalization and Dropout (0.3), concluding with a Softmax activation for the final diagnosis (Normal, Benign, or Malignant).
+
+4.3. Clinical Justification via XAI (SmoothGrad-CAM++)
+To transition from a "black-box" model to a transparent diagnostic tool, we integrate an Explainable AI (XAI) layer using SmoothGrad-CAM++ to justify the EDCNN’s classification.
+
+[FIGURE: SmoothGrad-CAM++ Clinical Interpretation - Path provided separately]
+
+* Noise Averaging: We mitigate artifacts by applying Gaussian noise to the input across multiple samples and averaging the resulting gradients. This provides a cleaner, more focused heatmap on the tumor tissue.
+* Multi-Tier Ranking: The activations are categorized into distinct tiers (Critical, High, Moderate). This allows radiologists to see which anatomical regions contributed most to the model's malignancy score.
+
+---
+VISIBLE MATH: READABLE LOGIC
+
+* Z-Score Normalization (Input): 
+  z = (Input Pixel - Mean) / Standard Deviation
+* Min-Max Normalization (XAI/Denoising): 
+  x_norm = (Pixel - Min) / (Max - Min)
+* Focal Loss (Training Logic): 
+  Loss = 0.25 x (1 - Probability)^2.0 x Standard Cross Entropy
+* Feature Fusion: 
+  Combined Vector = [MobileNet Features + DenseNet Features]
+* SmoothGrad Smoothing: 
+  Final Saliency Map = Average of ( Grad-CAM + Random Gaussian Noise )
+
+
+---
+FOR RESEARCH PAPER: LaTeX CODES
+
+z = \frac{x - \mu}{\sigma} \quad \text{and} \quad x' = \frac{x - x_{min}}{x_{max} - x_{min}}
+L_{focal} = -\alpha (1 - p_t)^\gamma \log(p_t)
+F_{combined} = [GAP(f_{mob}) \parallel GAP(f_{dense})]
+\hat{M}_c(x) = \frac{1}{n} \sum_{i=1}^{n} M_{CAM++}(x + \mathcal{N}(0, \sigma^2))
+

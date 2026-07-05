@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Medical Portal | Breast Cancer Diagnostic AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .login-card {
+            background: rgba(22, 22, 37, 0.75);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 3rem;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        .login-card h2 {
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #00d26a, #0984e3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .login-card p {
+            color: #b2bec3;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+        .input-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+            color: #a4b0be;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: white;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            border-color: #0984e3;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #0984e3, #6c5ce7);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 1rem;
+        }
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(108, 92, 231, 0.3);
+        }
+        .error-msg {
+            color: #ff4757;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <span class="badge">SECURE PRIVATE NETWORK</span>
+        <h2>Diagnostic AI System</h2>
+        <p>Authorized Medical Personnel Only</p>
+        
+        <div class="input-group">
+            <label>Provider Username</label>
+            <input type="text" id="username" placeholder="Enter 'doctor'">
+        </div>
+        
+        <div class="input-group">
+            <label>Security Key</label>
+            <input type="password" id="password" placeholder="Enter 'secure123'">
+        </div>
+        
+        <button class="login-btn" onclick="attemptLogin()">Authenticate</button>
+        <p class="error-msg" id="errorMsg">Invalid credentials.</p>
+    </div>
+
+    <script>
+        async function attemptLogin() {
+            const btn = document.querySelector('.login-btn');
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            
+            btn.innerHTML = 'Authenticating...';
+            btn.style.opacity = '0.8';
+            
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = '/dashboard';
+                } else {
+                    document.getElementById('errorMsg').style.display = 'block';
+                    btn.innerHTML = 'Authenticate';
+                    btn.style.opacity = '1';
+                }
+            } catch (err) {
+                document.getElementById('errorMsg').innerText = "System error try again.";
+                document.getElementById('errorMsg').style.display = 'block';
+                btn.innerHTML = 'Authenticate';
+            }
+        }
+    </script>
+</body>
+</html>
