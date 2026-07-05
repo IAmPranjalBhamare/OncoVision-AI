@@ -1,0 +1,10 @@
+Flask==2.3.4
+gunicorn==22.1.0
+numpy==1.26.3
+opencv-python-headless==4.9.0.74
+Pillow==10.0.1
+matplotlib==3.8.3
+fpdf==1.7.2
+nibabel==6.3.0
+tensorflow-cpu==2.15.0
+bm3d==0.2.0

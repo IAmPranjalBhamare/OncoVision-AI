@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: breast-cancer-app
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    buildCommand: ""
+    startCommand: ""
+    envVars:
+      - key: PORT
+        value: "10000"
+        sync: false
