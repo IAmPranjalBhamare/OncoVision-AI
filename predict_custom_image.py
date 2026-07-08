@@ -60,7 +60,7 @@ def load_image(image_path):
 
 def predict_classification(model_edcnn, img_array):
     """Predict class using EDCNN"""
-    prediction = model_edcnn.predict(img_array, verbose=0)
+    prediction = model_edcnn(img_array, training=False).numpy()
     
     # Get raw probabilities
     raw_probs = {CLASSES[i]: prediction[0][i]*100 for i in range(len(CLASSES))}
@@ -80,7 +80,7 @@ def predict_classification(model_edcnn, img_array):
 
 def predict_segmentation(model_unet, img_array):
     """Predict segmentation mask using U-Net"""
-    mask_pred = model_unet.predict(img_array, verbose=0)[0, ..., 0]
+    mask_pred = model_unet(img_array, training=False).numpy()[0, ..., 0]
     mask_pred = (mask_pred > 0.5).astype(np.uint8) * 255
     return mask_pred
 
