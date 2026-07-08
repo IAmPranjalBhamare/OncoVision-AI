@@ -366,6 +366,35 @@ def get_gradcam(model, img_array, class_idx, n_samples=5, noise_spread=0.12):
 
     # Build the dense head score function
     dense_layers = [l for l in model.layers if isinstance(l, tf.keras.layers.Dense)]
+    
+    # Pre-build sub-models to avoid memory leaks inside the loop
+    mini_dense = None
+    last_conv_dense = None
+    if primary_sm is not None and mobilenet_sm is not None:
+        for layer in reversed(primary_sm.layers):
+            if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.DepthwiseConv2D, tf.keras.layers.SeparableConv2D)):
+                last_conv_dense = layer
+                break
+        if last_conv_dense is not None:
+            mini_dense = tf.keras.Model(
+                inputs  = primary_sm.input,
+                outputs = [last_conv_dense.output, primary_sm.output],
+                name    = "mini_dense"
+            )
+
+    mini_mob = None
+    last_conv_mob = None
+    if mobilenet_sm is not None and primary_sm is not None:
+        for layer in reversed(mobilenet_sm.layers):
+            if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.DepthwiseConv2D, tf.keras.layers.SeparableConv2D)):
+                last_conv_mob = layer
+                break
+        if last_conv_mob is not None:
+            mini_mob = tf.keras.Model(
+                inputs  = mobilenet_sm.input,
+                outputs = [last_conv_mob.output, mobilenet_sm.output],
+                name    = "mini_mob"
+            )
 
     combined_heatmaps = []
 
@@ -381,67 +410,43 @@ def get_gradcam(model, img_array, class_idx, n_samples=5, noise_spread=0.12):
         cams = []
 
         # ── Primary Backbone CAM ──────────────────────────────────────────────────────
-        if primary_sm is not None and mobilenet_sm is not None:
-            last_conv_dense = None
-            for layer in reversed(primary_sm.layers):
-                if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.DepthwiseConv2D, tf.keras.layers.SeparableConv2D)):
-                    last_conv_dense = layer
-                    break
+        if mini_dense is not None:
+            with tf.GradientTape() as tape:
+                conv_d, dense_out = mini_dense(noisy_img_tensor, training=False)
+                tape.watch(conv_d)
+                mob_out  = mobilenet_sm(noisy_img_tensor, training=False)
+                dp       = tf.reduce_mean(dense_out, axis=[1, 2])
+                mp       = tf.reduce_mean(mob_out, axis=[1, 2])
+                merged   = tf.concat([mp, dp], axis=-1)
+                x_score = merged
+                for j, dl in enumerate(dense_layers):
+                    w, b = dl.kernel, dl.bias
+                    x_score = tf.nn.relu(tf.linalg.matmul(x_score, w) + b) \
+                              if j < len(dense_layers) - 1 \
+                              else tf.linalg.matmul(x_score, w) + b
+                score_d = x_score[:, class_idx]
 
-            if last_conv_dense is not None:
-                mini_dense = tf.keras.Model(
-                    inputs  = primary_sm.input,
-                    outputs = [last_conv_dense.output, primary_sm.output],
-                    name    = "mini_dense"
-                )
-                with tf.GradientTape() as tape:
-                    conv_d, dense_out = mini_dense(noisy_img_tensor, training=False)
-                    tape.watch(conv_d)
-                    mob_out  = mobilenet_sm(noisy_img_tensor, training=False)
-                    dp       = tf.reduce_mean(dense_out, axis=[1, 2])
-                    mp       = tf.reduce_mean(mob_out, axis=[1, 2])
-                    merged   = tf.concat([mp, dp], axis=-1)
-                    x_score = merged
-                    for j, dl in enumerate(dense_layers):
-                        w, b = dl.kernel, dl.bias
-                        x_score = tf.nn.relu(tf.linalg.matmul(x_score, w) + b) \
-                                  if j < len(dense_layers) - 1 \
-                                  else tf.linalg.matmul(x_score, w) + b
-                    score_d = x_score[:, class_idx]
-
-                grads_d = tape.gradient(score_d, conv_d)
-                if grads_d is not None:
-                    maps_d = conv_d[0].numpy()
-                    grads_d_val = grads_d[0].numpy()
-                    
-                    # Grad-CAM++ Element: Only positive gradients strongly influence the map
-                    pos_grads_d = np.maximum(grads_d_val, 0)
-                    weights_d = np.mean(pos_grads_d, axis=(0, 1))
-                    
-                    cam_d = np.sum(maps_d * weights_d, axis=-1)
-                    cam_d = np.maximum(cam_d, 0) # Strictly positive activations
-                    
-                    if cam_d.max() > 1e-8:
-                        if i == 0:
-                            print(f"  [SmoothGrad-CAM++ DenseNet] layer={last_conv_dense.name} max={cam_d.max():.6f}")
-                        cams.append(("densenet", cam_d, 0.55))
+            grads_d = tape.gradient(score_d, conv_d)
+            if grads_d is not None:
+                maps_d = conv_d[0].numpy()
+                grads_d_val = grads_d[0].numpy()
+                
+                # Grad-CAM++ Element: Only positive gradients strongly influence the map
+                pos_grads_d = np.maximum(grads_d_val, 0)
+                weights_d = np.mean(pos_grads_d, axis=(0, 1))
+                
+                cam_d = np.sum(maps_d * weights_d, axis=-1)
+                cam_d = np.maximum(cam_d, 0) # Strictly positive activations
+                
+                if cam_d.max() > 1e-8:
+                    if i == 0:
+                        print(f"  [SmoothGrad-CAM++ DenseNet] layer={last_conv_dense.name} max={cam_d.max():.6f}")
+                    cams.append(("densenet", cam_d, 0.55))
 
         # ── MobileNetV2 CAM ───────────────────────────────────────────────────────
-        if mobilenet_sm is not None and primary_sm is not None:
-            last_conv_mob = None
-            for layer in reversed(mobilenet_sm.layers):
-                if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.DepthwiseConv2D, tf.keras.layers.SeparableConv2D)):
-                    last_conv_mob = layer
-                    break
-
-            if last_conv_mob is not None:
-                mini_mob = tf.keras.Model(
-                    inputs  = mobilenet_sm.input,
-                    outputs = [last_conv_mob.output, mobilenet_sm.output],
-                    name    = "mini_mob"
-                )
-                with tf.GradientTape() as tape:
-                    conv_m, mob_out2 = mini_mob(noisy_img_tensor, training=False)
+        if mini_mob is not None:
+            with tf.GradientTape() as tape:
+                conv_m, mob_out2 = mini_mob(noisy_img_tensor, training=False)
                     tape.watch(conv_m)
                     dense_out2 = primary_sm(noisy_img_tensor, training=False)
                     dp2       = tf.reduce_mean(dense_out2,  axis=[1, 2])
