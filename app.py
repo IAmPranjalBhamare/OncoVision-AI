@@ -42,20 +42,24 @@ _models_ready   = False
 
 
 def load_models_once():
-    """Load both Keras models into global RAM. Called once at startup in a background thread."""
+    """Rebuild both models from source architecture and load trained weights."""
     global model_edcnn, model_unet, _models_loading, _models_ready
     if _models_ready or _models_loading:
         return
     _models_loading = True
     import tensorflow as tf
-    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
-    edcnn_path  = os.path.join(results_dir, "edcnn_best.h5")
-    unet_path   = os.path.join(results_dir, "unet_best.h5")
+    from models.edcnn import build_edcnn
+    from models.unet  import build_unet
+    results_dir    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+    edcnn_weights  = os.path.join(results_dir, "edcnn_weights.weights.h5")
+    unet_weights   = os.path.join(results_dir, "unet_weights.weights.h5")
     try:
-        print("[System] Loading EDCNN model…")
-        model_edcnn = tf.keras.models.load_model(edcnn_path, compile=False)
-        print("[System] Loading U-Net model…")
-        model_unet  = tf.keras.models.load_model(unet_path,  compile=False)
+        print("[System] Building EDCNN architecture…")
+        model_edcnn = build_edcnn()
+        model_edcnn.load_weights(edcnn_weights)
+        print("[System] Building U-Net architecture…")
+        model_unet  = build_unet()
+        model_unet.load_weights(unet_weights)
         _models_ready = True
         print("[System] ✓ Both models loaded and ready.")
     except Exception as e:
