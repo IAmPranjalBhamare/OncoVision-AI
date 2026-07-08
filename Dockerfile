@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY app.py predict_custom_image.py gradcam_xai.py ./
 COPY models ./models
@@ -25,4 +26,4 @@ COPY static ./static
 COPY results/edcnn_best.keras ./results/edcnn_best.keras
 COPY results/unet_best.keras ./results/unet_best.keras
 
-CMD ["gunicorn", "--workers=1", "--threads=2", "--worker-class=gthread", "--bind=0.0.0.0:$PORT", "app:app"]
+CMD gunicorn --workers=1 --threads=2 --worker-class=gthread --bind=0.0.0.0:$PORT app:app
