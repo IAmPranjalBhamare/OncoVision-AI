@@ -26,4 +26,4 @@ COPY static ./static
 COPY results/edcnn_best.keras ./results/edcnn_best.keras
 COPY results/unet_best.keras ./results/unet_best.keras
 
-CMD gunicorn --workers=1 --threads=2 --worker-class=gthread --bind=0.0.0.0:$PORT app:app
+CMD ["sh", "-c", "gunicorn --workers=1 --threads=2 --worker-class=gthread --bind=0.0.0.0:$PORT app:app"]
