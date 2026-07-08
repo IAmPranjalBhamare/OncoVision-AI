@@ -411,12 +411,15 @@ def get_gradcam(model, img_array, class_idx, n_samples=5, noise_spread=0.12):
 
         # ── Primary Backbone CAM ──────────────────────────────────────────────────────
         if mini_dense is not None:
-            with tf.GradientTape() as tape:
+            # Run non-target backbone OUTSIDE the tape
+            mob_out = mobilenet_sm(noisy_img_tensor, training=False)
+            mp = tf.reduce_mean(mob_out, axis=[1, 2])
+
+            with tf.GradientTape(watch_accessed_variables=False) as tape:
                 conv_d, dense_out = mini_dense(noisy_img_tensor, training=False)
                 tape.watch(conv_d)
-                mob_out  = mobilenet_sm(noisy_img_tensor, training=False)
+                
                 dp       = tf.reduce_mean(dense_out, axis=[1, 2])
-                mp       = tf.reduce_mean(mob_out, axis=[1, 2])
                 merged   = tf.concat([mp, dp], axis=-1)
                 x_score = merged
                 for j, dl in enumerate(dense_layers):
@@ -445,11 +448,14 @@ def get_gradcam(model, img_array, class_idx, n_samples=5, noise_spread=0.12):
 
         # ── MobileNetV2 CAM ───────────────────────────────────────────────────────
         if mini_mob is not None:
-            with tf.GradientTape() as tape:
+            # Run non-target backbone OUTSIDE the tape
+            dense_out2 = primary_sm(noisy_img_tensor, training=False)
+            dp2 = tf.reduce_mean(dense_out2, axis=[1, 2])
+
+            with tf.GradientTape(watch_accessed_variables=False) as tape:
                 conv_m, mob_out2 = mini_mob(noisy_img_tensor, training=False)
                 tape.watch(conv_m)
-                dense_out2 = primary_sm(noisy_img_tensor, training=False)
-                dp2       = tf.reduce_mean(dense_out2,  axis=[1, 2])
+                
                 mp2       = tf.reduce_mean(mob_out2,  axis=[1, 2])
                 merged2   = tf.concat([mp2, dp2], axis=-1)
                 x_score2 = merged2
