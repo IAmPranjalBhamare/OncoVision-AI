@@ -6,6 +6,7 @@ Pillow==10.3.0
 matplotlib==3.8.4
 fpdf==1.7.2
 nibabel==5.2.1
-tensorflow-cpu==2.16.2
+tensorflow-cpu==2.20.0
+keras==3.12.1
 protobuf==4.25.3
 bm3d==4.0.3
