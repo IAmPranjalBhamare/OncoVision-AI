@@ -447,18 +447,18 @@ def get_gradcam(model, img_array, class_idx, n_samples=5, noise_spread=0.12):
         if mini_mob is not None:
             with tf.GradientTape() as tape:
                 conv_m, mob_out2 = mini_mob(noisy_img_tensor, training=False)
-                    tape.watch(conv_m)
-                    dense_out2 = primary_sm(noisy_img_tensor, training=False)
-                    dp2       = tf.reduce_mean(dense_out2,  axis=[1, 2])
-                    mp2       = tf.reduce_mean(mob_out2,  axis=[1, 2])
-                    merged2   = tf.concat([mp2, dp2], axis=-1)
-                    x_score2 = merged2
-                    for j, dl in enumerate(dense_layers):
-                        w, b = dl.kernel, dl.bias
-                        x_score2 = tf.nn.relu(tf.linalg.matmul(x_score2, w) + b) \
-                                   if j < len(dense_layers) - 1 \
-                                   else tf.linalg.matmul(x_score2, w) + b
-                    score_m = x_score2[:, class_idx]
+                tape.watch(conv_m)
+                dense_out2 = primary_sm(noisy_img_tensor, training=False)
+                dp2       = tf.reduce_mean(dense_out2,  axis=[1, 2])
+                mp2       = tf.reduce_mean(mob_out2,  axis=[1, 2])
+                merged2   = tf.concat([mp2, dp2], axis=-1)
+                x_score2 = merged2
+                for j, dl in enumerate(dense_layers):
+                    w, b = dl.kernel, dl.bias
+                    x_score2 = tf.nn.relu(tf.linalg.matmul(x_score2, w) + b) \
+                               if j < len(dense_layers) - 1 \
+                               else tf.linalg.matmul(x_score2, w) + b
+                score_m = x_score2[:, class_idx]
 
                 grads_m = tape.gradient(score_m, conv_m)
                 if grads_m is not None:
