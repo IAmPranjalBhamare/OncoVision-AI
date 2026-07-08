@@ -17,6 +17,7 @@ def build_edcnn(
     num_classes=NUM_CLASSES,
     dropout_rate=DROPOUT_RATE,
     freeze_base=True,
+    weights=None,
 ):
     """
     Fast Dual-Backbone: MobileNetV2 + EfficientNetB0.
@@ -28,7 +29,7 @@ def build_edcnn(
     mobilenet_base = MobileNetV2(
         input_shape=input_shape,
         include_top=False,
-        weights="imagenet",
+        weights=weights,
         pooling=None,
     )
     mobilenet_base.trainable = not freeze_base
@@ -39,7 +40,7 @@ def build_edcnn(
     densenet_base = DenseNet121(
         input_shape=input_shape,
         include_top=False,
-        weights="imagenet",
+        weights=weights,
         pooling=None,
     )
     densenet_base.trainable = not freeze_base
