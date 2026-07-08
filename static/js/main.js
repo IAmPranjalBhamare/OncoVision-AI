@@ -135,12 +135,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Poll /api/predict/status/<task_id> until done ─────────────────────
     async function pollTaskUntilDone(task_id, setStep) {
         const loadingMsg = loadingState.querySelector('p');
+        let consecutiveErrors = 0;
+        const MAX_ERRORS = 6; // allow up to ~12s of transient failures before giving up
 
         return new Promise((resolve, reject) => {
             const pollId = setInterval(async () => {
                 try {
                     const res  = await fetch(`/api/predict/status/${task_id}`);
-                    if (!res.ok) { clearInterval(pollId); reject(new Error('Polling failed')); return; }
+
+                    if (!res.ok) {
+                        // 404 after a done result is a race condition — treat as done
+                        if (res.status === 404 && consecutiveErrors === 0) {
+                            // Task was deleted right after being read as 'done'
+                            // Nothing to do — the previous poll already resolved or will resolve
+                            return;
+                        }
+                        consecutiveErrors++;
+                        if (consecutiveErrors >= MAX_ERRORS) {
+                            clearInterval(pollId);
+                            reject(new Error(`Server error (${res.status}). Please try again.`));
+                        }
+                        return; // retry on next tick
+                    }
+
+                    consecutiveErrors = 0; // reset on success
                     const data = await res.json();
 
                     if (data.error && data.status !== 'running') {
@@ -165,10 +183,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         reject(new Error(data.error || 'Inference failed'));
                     }
                 } catch (e) {
-                    clearInterval(pollId);
-                    reject(e);
+                    // Network error — retry up to MAX_ERRORS times
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= MAX_ERRORS) {
+                        clearInterval(pollId);
+                        reject(new Error('Connection lost. Please check your network and try again.'));
+                    }
                 }
-            }, 800);
+            }, 2000);
         });
     }
 

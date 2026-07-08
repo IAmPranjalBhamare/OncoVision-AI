@@ -82,11 +82,12 @@ def fast_denoise(img_rgb_uint8):
 
 def _set_task(task_id, status, step, progress, result=None, error=None):
     TASK_QUEUE[task_id] = {
-        'status':   status,    # 'running' | 'done' | 'error'
-        'step':     step,      # Human-readable current step label
-        'progress': progress,  # 0-100
-        'result':   result,
-        'error':    error,
+        'status':       status,    # 'running' | 'done' | 'error'
+        'step':         step,      # Human-readable current step label
+        'progress':     progress,  # 0-100
+        'result':       result,
+        'error':        error,
+        'completed_at': time.time() if status in ('done', 'error') else None,
     }
 
 
@@ -371,10 +372,16 @@ def predict_status(task_id):
     """Poll this endpoint to get progress updates for a running inference task."""
     if not session.get('logged_in'):
         return jsonify({'error': 'Unauthorized'}), 401
+
+    # Lazy cleanup of stale completed tasks (older than 60s)
+    stale = [k for k, v in list(TASK_QUEUE.items())
+             if v.get('completed_at') and (time.time() - v['completed_at']) > 60]
+    for k in stale:
+        TASK_QUEUE.pop(k, None)
+
     task = TASK_QUEUE.get(task_id)
     if task is None:
         return jsonify({'error': 'Task not found'}), 404
-    # Don't send the full result on every poll — only when done
     payload = {
         'status':   task['status'],
         'step':     task['step'],
@@ -383,8 +390,9 @@ def predict_status(task_id):
     }
     if task['status'] == 'done':
         payload['result'] = task['result']
-        # Clean up from queue after delivering result once
-        del TASK_QUEUE[task_id]
+        # Mark completion time so lazy cleanup can remove it after 60s
+        if task.get('completed_at') is None:
+            task['completed_at'] = time.time()
     return jsonify(payload)
 
 
