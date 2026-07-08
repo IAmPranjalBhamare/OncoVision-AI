@@ -1,4 +1,4 @@
-// main.js v4 — Advanced CAD Diagnostics + Full Filter Engine
+// main.js v5 — Advanced CAD Diagnostics + Progressive Inference Polling
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -38,23 +38,153 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.classList.add('hidden');
         loadingState.classList.remove('hidden');
 
+        // Update loading UI with step text
+        const loadingTitle = loadingState.querySelector('h3');
+        const loadingMsg   = loadingState.querySelector('p');
+
+        // ── Add a progress bar to the loading state if not already there ──
+        if (!document.getElementById('inferenceProgress')) {
+            const progressWrap = document.createElement('div');
+            progressWrap.style.cssText = 'width:260px;margin:1.2rem auto 0;background:rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;height:6px;';
+            const progressBar = document.createElement('div');
+            progressBar.id = 'inferenceProgress';
+            progressBar.style.cssText = 'height:6px;width:0%;background:linear-gradient(90deg,#0984e3,#00d26a);border-radius:8px;transition:width 0.4s ease;';
+            progressWrap.appendChild(progressBar);
+            loadingState.appendChild(progressWrap);
+        }
+        const progressBar = document.getElementById('inferenceProgress');
+
+        function setStep(stepText, pct) {
+            if (loadingTitle) loadingTitle.textContent = stepText;
+            if (progressBar)  progressBar.style.width  = pct + '%';
+        }
+
+        // ── Check if models are ready first ───────────────────────────────
+        setStep('Checking AI system status…', 5);
+        try {
+            const statusRes  = await fetch('/api/status');
+            const statusData = await statusRes.json();
+            if (!statusData.ready) {
+                setStep('Models warming up — please wait…', 8);
+                if (loadingMsg) loadingMsg.textContent = 'The AI models are loading for the first time. This takes ~60s once.';
+                // Poll until models are ready
+                await new Promise((resolve, reject) => {
+                    const pollId = setInterval(async () => {
+                        try {
+                            const r = await fetch('/api/status');
+                            const d = await r.json();
+                            if (d.ready) { clearInterval(pollId); resolve(); }
+                        } catch { clearInterval(pollId); reject(new Error('Status check failed')); }
+                    }, 3000);
+                });
+            }
+        } catch (e) {
+            // If status endpoint fails, proceed anyway (old server fallback)
+        }
+
+        // ── Start async inference job ──────────────────────────────────────
+        setStep('Uploading scan…', 10);
+        if (loadingMsg) loadingMsg.textContent = 'Sending image to AI pipeline…';
+
         const formData = new FormData();
         formData.append('file', file);
         formData.append('patient_id', patientId);
 
         try {
-            const res = await fetch('/api/predict', { method: 'POST', body: formData });
-            if (!res.ok) throw new Error('Server error during processing. Please try again.');
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            populateResults(data);
-            uploadView.classList.add('hidden');
-            resultsView.classList.remove('hidden');
+            // Try the new async endpoint first
+            const startRes = await fetch('/api/predict/start', { method: 'POST', body: formData });
+
+            if (startRes.status === 503) {
+                // Models still loading — wait and retry once
+                setStep('Models warming up…', 12);
+                await new Promise(r => setTimeout(r, 5000));
+                const retryRes = await fetch('/api/predict/start', { method: 'POST', body: formData });
+                if (!retryRes.ok) throw new Error('Server not ready. Please try again in a moment.');
+                const retryData = await retryRes.json();
+                if (retryData.error) throw new Error(retryData.error);
+                await pollTaskUntilDone(retryData.task_id, setStep);
+                return;
+            }
+
+            if (!startRes.ok) {
+                // Fall back to synchronous endpoint
+                setStep('Running AI analysis…', 20);
+                if (loadingMsg) loadingMsg.textContent = 'Processing — this may take up to 60 seconds…';
+                const syncRes = await fetch('/api/predict', { method: 'POST', body: formData });
+                if (!syncRes.ok) throw new Error('Server error during processing. Please try again.');
+                const data = await syncRes.json();
+                if (data.error) throw new Error(data.error);
+                populateResults(data);
+                uploadView.classList.add('hidden');
+                resultsView.classList.remove('hidden');
+                return;
+            }
+
+            const startData = await startRes.json();
+            if (startData.error) throw new Error(startData.error);
+
+            await pollTaskUntilDone(startData.task_id, setStep);
+
         } catch (error) {
             alert(error.message);
             loadingState.classList.add('hidden');
             dropZone.classList.remove('hidden');
         }
+    }
+
+    // ── Poll /api/predict/status/<task_id> until done ─────────────────────
+    async function pollTaskUntilDone(task_id, setStep) {
+        const loadingMsg = loadingState.querySelector('p');
+
+        return new Promise((resolve, reject) => {
+            const pollId = setInterval(async () => {
+                try {
+                    const res  = await fetch(`/api/predict/status/${task_id}`);
+                    if (!res.ok) { clearInterval(pollId); reject(new Error('Polling failed')); return; }
+                    const data = await res.json();
+
+                    if (data.error && data.status !== 'running') {
+                        clearInterval(pollId);
+                        reject(new Error(data.error || 'Unknown server error'));
+                        return;
+                    }
+
+                    // Update progress UI
+                    setStep(data.step || 'Processing…', data.progress || 0);
+                    if (loadingMsg) loadingMsg.textContent = getStepSubtitle(data.step);
+
+                    if (data.status === 'done') {
+                        clearInterval(pollId);
+                        setStep('Rendering results…', 100);
+                        populateResults(data.result);
+                        uploadView.classList.add('hidden');
+                        resultsView.classList.remove('hidden');
+                        resolve();
+                    } else if (data.status === 'error') {
+                        clearInterval(pollId);
+                        reject(new Error(data.error || 'Inference failed'));
+                    }
+                } catch (e) {
+                    clearInterval(pollId);
+                    reject(e);
+                }
+            }, 800);
+        });
+    }
+
+    function getStepSubtitle(step) {
+        const map = {
+            'Starting inference…':            'Initialising AI pipeline…',
+            'Decoding image…':                'Reading and validating the uploaded scan…',
+            'Denoising image…':               'Applying noise reduction filter…',
+            'Running U-Net segmentation…':    'Detecting and outlining tumor regions…',
+            'Running EDCNN classification…':  'Classifying tissue — Benign / Malignant / Normal…',
+            'Generating Grad-CAM XAI maps…':  'Computing gradient-weighted attention heatmaps…',
+            'Building diagnostic overlays…':  'Compositing final diagnostic fusion images…',
+            'Computing XAI analytics…':       'Calculating coverage, alignment, and signal metrics…',
+            'Encoding results…':              'Preparing images for display…',
+        };
+        return map[step] || 'Running AI pipeline…';
     }
 
     // ─── Comparison Mode ────────────────────────────────────────────────────
