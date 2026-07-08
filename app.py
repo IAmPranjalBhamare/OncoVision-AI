@@ -49,8 +49,8 @@ def load_models_once():
     _models_loading = True
     import tensorflow as tf
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
-    edcnn_path  = os.path.join(results_dir, "edcnn_best.keras")
-    unet_path   = os.path.join(results_dir, "unet_best.keras")
+    edcnn_path  = os.path.join(results_dir, "edcnn_best.h5")
+    unet_path   = os.path.join(results_dir, "unet_best.h5")
     try:
         print("[System] Loading EDCNN model…")
         model_edcnn = tf.keras.models.load_model(edcnn_path, compile=False)

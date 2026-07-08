@@ -733,8 +733,8 @@ def main():
 
     # Roots
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
-    edcnn_keras_path = os.path.join(results_dir, "edcnn_best.keras")
-    unet_keras_path  = os.path.join(results_dir, "unet_best.keras")
+    edcnn_keras_path = os.path.join(results_dir, "edcnn_best.h5")
+    unet_keras_path  = os.path.join(results_dir, "unet_best.h5")
 
     print(f"\n[Load] EDCNN from {edcnn_keras_path}")
     model_edcnn = tf.keras.models.load_model(edcnn_keras_path, compile=False)

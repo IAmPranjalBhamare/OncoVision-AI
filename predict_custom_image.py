@@ -376,8 +376,8 @@ def main():
     
     print("\n[2/6] Loading models...")
     
-    edcnn_keras_path = os.path.join(os.path.dirname(EDCNN_WEIGHTS), "edcnn_best.keras")
-    unet_keras_path = os.path.join(os.path.dirname(UNET_WEIGHTS), "unet_best.keras")
+    edcnn_keras_path = os.path.join(os.path.dirname(EDCNN_WEIGHTS), "edcnn_best.h5")
+    unet_keras_path = os.path.join(os.path.dirname(UNET_WEIGHTS), "unet_best.h5")
 
     if not os.path.exists(edcnn_keras_path):
         print(f"[ERROR] EDCNN model not found: {edcnn_keras_path}")

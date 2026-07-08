@@ -23,8 +23,8 @@ COPY models ./models
 COPY utils ./utils
 COPY templates ./templates
 COPY static ./static
-COPY results/edcnn_best.keras ./results/edcnn_best.keras
-COPY results/unet_best.keras ./results/unet_best.keras
+COPY results/edcnn_best.h5 ./results/edcnn_best.h5
+COPY results/unet_best.h5 ./results/unet_best.h5
 COPY start.sh ./start.sh
 RUN chmod +x ./start.sh
 
